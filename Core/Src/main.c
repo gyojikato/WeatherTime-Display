@@ -7,19 +7,24 @@
 
 #include "main.h"
 
-#define TIME_x_pos			(50)
-#define TIME_y_pos			(50)
+#define TIME_x_pos			(3)
+#define TIME_y_pos			(23)
 
-#define DATE_x_pos			(50)
+#define DATE_x_pos			(15) // offset to set the date info to middle
 #define DATE_y_pos			(0)
 
+#define set_DATE_x_pos		DATE_x_pos
+#define set_DATE_y_pos		(29)
+
 #define TEMP_x_pos			(0)
-#define TEMP_y_pos			(25)
+#define TEMP_y_pos			(53)
 
-#define HUM_x_pos			(50)
-#define HUM_y_pos			(25)
+#define HUM_x_pos			(72)
+#define HUM_y_pos			(53)
 
-/*#define DS1307_IS_INITIALIZED*/
+#define MAX_TIMER_NO		(2)
+#define NEXT_ONE_SHOT_TIMER	(0)
+#define INC_ONE_SHOT_TIMER	(1)
 
 typedef struct {
 	char temp_buf[20];
@@ -30,33 +35,45 @@ typedef struct {
 	SemaphoreHandle_t CFG_TIME_Smphr;
 	SemaphoreHandle_t CFG_DATE_Smphr;
 	SemaphoreHandle_t CFG_NXT_Smphr;
+	SemaphoreHandle_t CFG_INC_Smphr;
+	FunctionalState  increment_flg;
 }CFG_IT_SMPHR_t;
 
+typedef struct {
+	char xTimerName[20];
+}OneShotTimerID_t;
 
-I2C_Handle_t  I2C_DCLK_BUS_h;
-GPIO_Handle_t I2C_DCLK_PIN_h;
-GPIO_Handle_t DHT22_PIN_h;
 
-SH1106_Handle_t SH1106_DCLK_h;
-SH1106_Comms_t  SH1106_comms_h;
+static I2C_Handle_t  I2C_DCLK_BUS_h;
+static GPIO_Handle_t I2C_DCLK_PIN_h;
+static GPIO_Handle_t DHT22_PIN_h;
 
-DS1307_Handle_t DS1307_DCLK_h;
+static SH1106_Handle_t SH1106_DCLK_h;
+static SH1106_Comms_t  SH1106_comms_h;
 
-DHT22_Handle_t DHT22_DCLK_h;
-DHT22_FUNC_t DHT22_WRAPPER_h;
+static DS1307_Handle_t DS1307_DCLK_h;
 
-SemaphoreHandle_t xI2C_BUS_Smphr;
-SemaphoreHandle_t xTIME_DATA_Smphr;
-SemaphoreHandle_t xDATE_DATA_Smphr;
-QueueHandle_t xDHT22_DATA_Queue;
+static DHT22_Handle_t DHT22_DCLK_h;
+static DHT22_FUNC_t DHT22_WRAPPER_h;
 
-TaskHandle_t xTask1;
-TaskHandle_t xTask2;
-TaskHandle_t xTask3;
-TaskHandle_t xTask4;
-TaskHandle_t xTask5;
+static SemaphoreHandle_t xI2C_BUS_Smphr;
+static SemaphoreHandle_t xTIME_DATA_Smphr;
+static SemaphoreHandle_t xDATE_DATA_Smphr;
+static QueueHandle_t xDHT22_DATA_Queue;
 
-CFG_IT_SMPHR_t DCLK_CFG_SMPHR_h;
+static TaskHandle_t xTask1;
+static TaskHandle_t xTask2;
+static TaskHandle_t xTask3;
+static TaskHandle_t xTask4;
+static TaskHandle_t xTask5;
+static TaskHandle_t xTask6;
+
+static CFG_IT_SMPHR_t DCLK_CFG_SMPHR_h;
+
+static TimerHandle_t xTimerOneShot[MAX_TIMER_NO];
+OneShotTimerID_t xOneShotTimerID[MAX_TIMER_NO];
+
+static volatile uint8_t xForceDateRST_flg;
 
 /* I2C BUS INIT */
 /**
@@ -94,7 +111,7 @@ uint8_t SH1106_I2C_WRITE(uint8_t Slave_Addr, uint8_t* TxBuffer, uint32_t len, ui
  * @brief
  * @param
  */
-uint8_t DS1307_I2C_WRITE(uint8_t Slave_Addr, uint8_t reg_addr, uint8_t value);
+uint8_t DS1307_I2C_WRITE(uint8_t Slave_Addr, uint8_t* TxBuffer, uint32_t len);
 
 /**
  * @brief
@@ -135,34 +152,48 @@ uint32_t DHTT22_CURR_TICK(void);
 
 /* FreeRTOS Tasks */
 /**
- * @brief
- * @param
+ * @brief Task that is intended to run one time, calls all necessary initialization (init task)
+ * @param pvParameters: FreeRTOS Task parameter
  */
 void vTaskDCLKInit(void* pvParameters);
 
 /**
- * @brief
- * @param
+ * @brief Task that retrieves Time data from DS1307 (100ms task)
+ * @param pvParameters: FreeRTOS Task parameter
  */
 void vTaskGetTime(void* pvParameters);
 
 /**
- * @brief
- * @param
+ * @brief Task that is responsible for udpating the OLED screen whenever there is a change (Event driven task)
+ * @param pvParameters: FreeRTOS Task parameter
  */
 void vTaskPrintOled(void* pvParameters);
 
 /**
- * @brief
- * @param
+ * @brief Task that retrieves temperature and humidity data from DHT22 (2000ms task)
+ * @param pvParameters: FreeRTOS Task parameter
  */
 void vTaskGetDHT22(void* pvParameters);
 
 /**
- * @brief
- * @param
+ * @brief Task which handles the configuration of Time data for the digiclock (Event driven task)
+ * @param pvParameters: FreeRTOS Task parameter
  */
 void vTaskSetTime(void* pvParameters);
+
+
+/**
+ * @brief Task which handles the configuration of Date data for the digiclock (Event driven task)
+ * @param pvParameters: FreeRTOS Task parameter
+ */
+void vTaskSetDate(void* pvParameters);
+/**
+ * @brief Callback function for FreeRTOS one shot software timers
+ * @param xTimer: Timer Handle which has the timer responsible for the callback
+ */
+// TIMER CALLBACK FUNCTIONS
+
+void xTimerOneShotCllBck(TimerHandle_t xTimer);
 
 int main()
 {
@@ -214,6 +245,31 @@ int main()
 		task_status += 100;
 	}
 
+	if(xTaskCreate(vTaskSetDate,
+			"vTaskSetDate",
+			1024,
+			NULL,
+			1,
+			&xTask6) == pdFALSE){
+		task_status += 1000;
+	}
+
+	for(uint8_t i = 0; i < MAX_TIMER_NO; i++){
+		xTimerOneShot[i] = xTimerCreate("xTimerOneShot",
+				pdMS_TO_TICKS(1000), 		// default timer period is to be set
+				pdFALSE,					// set to FALSE for One shot functionality
+				(void *)&xOneShotTimerID[i],
+				xTimerOneShotCllBck);
+		if(xTimerOneShot[i] == NULL){ // force a reset if timers are failed to be allocated
+			NVIC_SystemReset();
+		}
+	}
+
+	if(task_status){
+		// force a system reset if tasks are failed to be created
+		NVIC_SystemReset();
+	}
+
 
 	vTaskStartScheduler();
 	// if task scheduler starts to fail, force a reset
@@ -222,8 +278,8 @@ int main()
 
 /* Helper Functions */
 /**
- * @brief
- * @param
+ * @brief Wrapper function for easy toggling of I2C interrupt configurations
+ * @param ENorDI: Enable or Disable states
  */
 static void I2C1_irq_cfg(uint8_t ENorDI)
 {
@@ -232,8 +288,9 @@ static void I2C1_irq_cfg(uint8_t ENorDI)
 }
 
 /**
- * @brief
- * @param
+ * @brief Compares current and previous received time
+ * @param time_a: first time handle
+ * @param time_b: second time handle
  */
 static uint8_t cmp_time(const DS1307_TIME_t time_a, const DS1307_TIME_t time_b )
 {
@@ -242,20 +299,20 @@ static uint8_t cmp_time(const DS1307_TIME_t time_a, const DS1307_TIME_t time_b )
 }
 
 /**
- * @brief
+ * @brief Responsible for sending the screen buffer to the OLED
  * @param
  */
 static void oled_screen_update()
 {
 	I2C_PERI_CTRL(I2C1, ENABLE);
-	taskENTER_CRITICAL(); // FIXME SHOULD BE DEALT WITH SINCE UPDATE SCREEN TAKES TOO LONG
-	SH1106_UPDATE_SCRN(&SH1106_DCLK_h, SH1106_I2C_ADDR);
+	taskENTER_CRITICAL(); // FIXME SHOULD BE DEALT WITH SINCE UPDATE SCREEN TAKES TOO LONG ne
+	SH1106_UPDATE_SCRN(&SH1106_DCLK_h, SH1106_I2C_ADDR); // FIXME: Needs to be transferred to DMA so critical states can be avoided
 	taskEXIT_CRITICAL();
 	I2C_PERI_CTRL(I2C1, DISABLE);
 }
 
 /**
- * @brief
+ * @brief Checks the time if the time will set a new day
  * @param
  */
 static uint8_t check_day_reset(const DS1307_TIME_t ds1307_time_data){
@@ -283,13 +340,21 @@ static uint8_t check_day_reset(const DS1307_TIME_t ds1307_time_data){
  */
 static void ds1307_increment(GPIO_TypeDef* pGPIOx, uint8_t pin_number, uint8_t* target_val,  uint8_t max, uint8_t min){
 
-	if(GPIO_READ_INPUT_PIN(pGPIOx, pin_number) == 0){
+	vTaskDelay(pdMS_TO_TICKS(30));
+	if((xSemaphoreTake(DCLK_CFG_SMPHR_h.CFG_INC_Smphr, pdMS_TO_TICKS(0))) == pdTRUE ||
+			(GPIO_READ_INPUT_PIN(pGPIOx, pin_number) == 0)){
 		// short delay for polling button debounce
-		DELAY_ms(20);
+		vTaskDelay(pdMS_TO_TICKS(30));
 		(*target_val)++;
 		if(*target_val > max){
 			*target_val = min;
 		}
+	}
+
+	if((GPIO_READ_INPUT_PIN(GPIOB, GPIO_PIN_NUMBER_3)) == 1 && DCLK_CFG_SMPHR_h.increment_flg == DISABLE){
+		xTimerChangePeriod(xTimerOneShot[INC_ONE_SHOT_TIMER], pdMS_TO_TICKS(200), pdMS_TO_TICKS(20));
+		DCLK_CFG_SMPHR_h.increment_flg = ENABLE;
+		//TODO to be handled by software timers
 	}
 }
 
@@ -338,10 +403,32 @@ static uint8_t retMaxDay(DS1307_Handle_t DS1307_HANDLE){
  * 		  to help in button debounce issue
  * @param	GPIO_NUMBER : the gpio pin which the button is assigned
  */
-void flushPendingBit(uint8_t GPIO_NUMBER)
+void flushPendingBit(uint8_t GPIO_NUMBER, uint8_t IRQ_NUMBER)
 {
 	GPIO_IRQ_HANDLING(GPIO_NUMBER);
+	NVIC_ClearPendingIRQ(IRQ_NUMBER);
 }
+
+/**
+ * @brief
+ * @param
+ */
+
+void EnDiOtherTasks(FunctionalState status)
+{
+	if(status == ENABLE){
+		vTaskResume(xTask2);
+		vTaskResume(xTask3);
+		vTaskResume(xTask4);
+	}
+	else {
+		vTaskSuspend(xTask2);
+		vTaskSuspend(xTask3);
+		vTaskSuspend(xTask4);
+
+	}
+}
+
 
 /* FreeRTOS Tasks */
 /**
@@ -367,6 +454,7 @@ void vTaskDCLKInit(void* pvParameters)
 	NVIC_SetPriority(I2C1_EV_IRQn, 6);
 	NVIC_SetPriority(EXTI1_IRQn, 8);
 	NVIC_SetPriority(EXTI2_IRQn, 8);
+	NVIC_SetPriority(EXTI3_IRQn, 8);
 	NVIC_SetPriority(EXTI15_10_IRQn, 8);
 
 	DELAY_INIT();
@@ -402,11 +490,14 @@ void vTaskDCLKInit(void* pvParameters)
 	DCLK_CFG_SMPHR_h.CFG_DATE_Smphr = xSemaphoreCreateBinary();
 	DCLK_CFG_SMPHR_h.CFG_TIME_Smphr = xSemaphoreCreateBinary();
 	DCLK_CFG_SMPHR_h.CFG_NXT_Smphr = xSemaphoreCreateBinary();
+	DCLK_CFG_SMPHR_h.CFG_INC_Smphr = xSemaphoreCreateBinary();
+
+
 
 	// if any off the semaphores are failed to be initialized, force a system reset
 	if(xI2C_BUS_Smphr == NULL || xTIME_DATA_Smphr == NULL || xDATE_DATA_Smphr == NULL
 			|| xDHT22_DATA_Queue == NULL || DCLK_CFG_SMPHR_h.CFG_DATE_Smphr == NULL ||
-			DCLK_CFG_SMPHR_h.CFG_TIME_Smphr == NULL){
+			DCLK_CFG_SMPHR_h.CFG_TIME_Smphr == NULL || DCLK_CFG_SMPHR_h.CFG_INC_Smphr == NULL){
 
 		NVIC_SystemReset();
 	}
@@ -469,11 +560,13 @@ void vTaskPrintOled(void* pvParameters)
 
 		if(xSemaphoreTake(xTIME_DATA_Smphr, pdMS_TO_TICKS(0)) == pdTRUE)
 		{
-			memcpy(ttraw_time, DS1307_DCLK_h.raw_time, sizeof(ttraw_time)/sizeof(ttraw_time[0]));
+			memcpy(ttraw_time, DS1307_DCLK_h.raw_time, sizeof(ttraw_time)/sizeof(ttraw_time[0])); // FIXME: double check memory here should be bytes
 			DS1307_CONVERT_RAW_TIME(&tds1307_time_h, ttraw_time);
 			if(cmp_time(tds1307_time_h,  tds1307_time_h_old) == 0){
 
-				if(check_day_reset(tds1307_time_h) == 1){
+				if(check_day_reset(tds1307_time_h) == 1 || xForceDateRST_flg){
+
+					xForceDateRST_flg = 0;
 
 					if(xSemaphoreTake(xI2C_BUS_Smphr, pdMS_TO_TICKS(100)) == pdTRUE){
 						I2C_PERI_CTRL(I2C1, ENABLE);
@@ -488,21 +581,29 @@ void vTaskPrintOled(void* pvParameters)
 						DS1307_DATE_t tds1307_date_h;
 
 
-						memcpy(traw_date, DS1307_DCLK_h.raw_date, sizeof(traw_date)/sizeof(traw_date[0]));
+						memcpy(traw_date, DS1307_DCLK_h.raw_date, sizeof(traw_date)/sizeof(traw_date[0])); // FIXME: double check memory here should be bytes
 						DS1307_CONVERT_RAW_DATE(&tds1307_date_h, traw_date);
-						DateToString(&tds1307_date_h, tdate_bufer, sizeof(tdate_bufer));
+						DateToString(&tds1307_date_h, tdate_bufer, sizeof(tdate_bufer)); // FIXME: double check memory here
 
 						SH1106_GotoXY(&SH1106_DCLK_h, DATE_x_pos, DATE_y_pos);
 						SH1106_Puts(&SH1106_DCLK_h, tdate_bufer, &Font_7x10, SH1106_COLOR_BLACK);
+
+						// store the date data to the handle
+						memcpy(&DS1307_DCLK_h.DS1307_DATE_HANDLE, &tds1307_date_h, sizeof(DS1307_DCLK_h.DS1307_DATE_HANDLE));
 
 					}
 
 				}
 
-				TimeToString(&tds1307_time_h, ttime_buffer, sizeof(ttime_buffer));
+				TimeToString(&tds1307_time_h, ttime_buffer, sizeof(ttime_buffer)); // FIXME: double check memory here
 				SH1106_GotoXY(&SH1106_DCLK_h, TIME_x_pos, TIME_y_pos);
-				SH1106_Puts(&SH1106_DCLK_h, ttime_buffer, &Font_7x10, SH1106_COLOR_BLACK);
+				SH1106_Puts(&SH1106_DCLK_h, ttime_buffer, &Font_11x18, SH1106_COLOR_BLACK);
 				toled_scrn_update_ev = 1;
+
+				// store the time data to the handle
+				memcpy(&DS1307_DCLK_h.DS1307_TIME_HANDLE, &tds1307_time_h, sizeof(DS1307_DCLK_h.DS1307_TIME_HANDLE)); // TODO: Check if no error
+
+
 
 			}
 			tds1307_time_h_old = tds1307_time_h;
@@ -518,16 +619,16 @@ void vTaskPrintOled(void* pvParameters)
 			toled_scrn_update_ev = 1;
 		}
 
-		if(toled_scrn_update_ev == 1){
+		if(toled_scrn_update_ev){
 			if(xSemaphoreTake(xI2C_BUS_Smphr, pdMS_TO_TICKS(100)) == pdTRUE){
-				oled_screen_update();	/*FIXME: move OLED to DMA*/
+				oled_screen_update();
 				xSemaphoreGive(xI2C_BUS_Smphr);
 			}
 		}
 
 		vTaskDelay(pdMS_TO_TICKS(50));
 	}
-	vTaskDelete(NULL);
+	vTaskDelete(NULL); // deletes this task as this is not needed anymore
 }
 
 /**
@@ -563,6 +664,70 @@ void vTaskGetDHT22(void* pvParameters)
 	}
 }
 
+// static functions specifically for vTaskSetTime
+static void enterTaskSetTimeDate()
+{
+	EnDiOtherTasks(DISABLE); // we dont need other tasks to run if we are setting the time
+	flushPendingBit(GPIO_PIN_NUMBER_15, EXTI15_10_IRQn); // flush pending bit to avoid pre-interruption before use (debounce issue is also solved)
+	flushPendingBit(GPIO_PIN_NUMBER_3, EXTI3_IRQn);
+	DCLK_CFG_SMPHR_h.increment_flg = ENABLE;
+	GPIO_IRQ_CFG(EXTI15_10_IRQn, ENABLE);
+	GPIO_IRQ_CFG(EXTI3_IRQn, ENABLE);
+}
+
+static void exitTaskSetTimeDate()
+{
+	flushPendingBit(GPIO_PIN_NUMBER_1, EXTI1_IRQn);
+	flushPendingBit(GPIO_PIN_NUMBER_2, EXTI2_IRQn);
+	flushPendingBit(GPIO_PIN_NUMBER_3, EXTI3_IRQn);
+	flushPendingBit(GPIO_PIN_NUMBER_15, EXTI15_10_IRQn);
+	GPIO_IRQ_CFG(EXTI15_10_IRQn, DISABLE);
+	GPIO_IRQ_CFG(EXTI3_IRQn, DISABLE);
+	GPIO_IRQ_CFG(EXTI2_IRQn, ENABLE);
+	GPIO_IRQ_CFG(EXTI1_IRQn, ENABLE);
+	EnDiOtherTasks(ENABLE);
+}
+
+static void setTimeCursorPos(uint8_t curr_time_setting)
+{
+	const uint8_t cursor_x_pos[4] = {TIME_x_pos + (9 * 11), TIME_x_pos + (6 * 11), TIME_x_pos + (3 * 11), TIME_x_pos};
+	const uint8_t cursor_y_pos[4] = {TIME_y_pos, TIME_y_pos, TIME_y_pos, TIME_y_pos};
+	if(GPIO_READ_INPUT_PIN(GPIOB, GPIO_PIN_NUMBER_3) == 1){
+
+		SH1106_Draw_Filled_Rectangle(&SH1106_DCLK_h,
+				cursor_x_pos[curr_time_setting],
+				cursor_y_pos[curr_time_setting],
+				21,
+				17,
+				SH1106_COLOR_BLACK);
+		// prints current cursor here if idle
+		oled_screen_update(); // FIXME
+		vTaskDelay(pdMS_TO_TICKS(50));
+		// the cursor is covered by the time value after 50 ms
+	}
+}
+
+/**
+ * @brief
+ * @param
+ */
+static void setDateCursorPos(uint8_t curr_date_setting){
+	const uint8_t cursor_x_pos[4] = {set_DATE_x_pos + 77, set_DATE_x_pos + 56, set_DATE_x_pos, set_DATE_x_pos + 21};
+	const uint8_t cursor_y_pos[4] = {set_DATE_y_pos, set_DATE_y_pos, set_DATE_y_pos, set_DATE_y_pos};
+	if(GPIO_READ_INPUT_PIN(GPIOB, GPIO_PIN_NUMBER_3) == 1){
+
+		SH1106_Draw_Filled_Rectangle(&SH1106_DCLK_h,
+				cursor_x_pos[curr_date_setting],
+				cursor_y_pos[curr_date_setting],
+				curr_date_setting ? 13 : 20,
+				7,
+				SH1106_COLOR_BLACK);
+		// prints current cursor here if idle
+		oled_screen_update();
+		vTaskDelay(pdMS_TO_TICKS(50));
+		// the cursor is covered by the time value after 50 ms
+	}
+}
 /**
  * @brief
  * @param
@@ -570,29 +735,30 @@ void vTaskGetDHT22(void* pvParameters)
 void vTaskSetTime(void* pvParameters)
 {
 	while(1){
-		uint8_t time_status;
+		volatile uint8_t curr_time_setting = 0; // TODO values should be placed on enum
 		char time_buf[20];
+
 		if(xSemaphoreTake(DCLK_CFG_SMPHR_h.CFG_TIME_Smphr, pdMS_TO_TICKS(0)) == pdTRUE){
 			if(xSemaphoreTake(xI2C_BUS_Smphr, pdMS_TO_TICKS(300)) == pdTRUE){
-				vTaskSuspendAll();
+				SH1106_FILL_BUFFER(&SH1106_DCLK_h, SH1106_COLOR_BLACK);
 
-				GPIO_IRQ_CFG(EXTI15_10_IRQn, ENABLE);
+				enterTaskSetTimeDate();
+				vTaskSuspend(xTask6);
 
-				time_status = 4;
-				while(time_status > 0){
+				while(curr_time_setting <= 3){
 
-					switch(time_status){
-					case 4:
+					switch(curr_time_setting){
+					case 0:
 						ds1307_increment(GPIOB,
-							GPIO_PIN_NUMBER_14,
+							GPIO_PIN_NUMBER_3,
 							&DS1307_DCLK_h.DS1307_TIME_HANDLE.HOUR_FORMAT,
 							2,
 							0);
 						break;
 
-					case 3:
+					case 1:
 						ds1307_increment(GPIOB,
-							GPIO_PIN_NUMBER_14,
+							GPIO_PIN_NUMBER_3,
 							&DS1307_DCLK_h.DS1307_TIME_HANDLE.SECONDS,
 							59,
 							0);
@@ -600,23 +766,23 @@ void vTaskSetTime(void* pvParameters)
 
 					case 2:
 						ds1307_increment(GPIOB,
-							GPIO_PIN_NUMBER_14,
+							GPIO_PIN_NUMBER_3,
 							&DS1307_DCLK_h.DS1307_TIME_HANDLE.MINUTES,
 							59,
 							0);
 						break;
 
-					case 1:
+					case 3:
 						if(DS1307_DCLK_h.DS1307_TIME_HANDLE.HOUR_FORMAT == DS1307_24H_FORMAT){
 							ds1307_increment(GPIOB,
-									GPIO_PIN_NUMBER_14,
+									GPIO_PIN_NUMBER_3,
 									&DS1307_DCLK_h.DS1307_TIME_HANDLE.HOURS,
 									23,
 									0);
 						}
 						else {
 							ds1307_increment(GPIOB,
-									GPIO_PIN_NUMBER_14,
+									GPIO_PIN_NUMBER_3,
 									&DS1307_DCLK_h.DS1307_TIME_HANDLE.HOURS,
 									12,
 									1);
@@ -624,46 +790,131 @@ void vTaskSetTime(void* pvParameters)
 						break;
 					}
 
-					if(xSemaphoreTake(DCLK_CFG_SMPHR_h.CFG_NXT_Smphr, pdMS_TO_TICKS(0) == pdTRUE)){
-						time_status--;
-						DELAY_ms(20);
-						flushPendingBit(GPIO_PIN_NUMBER_15);
-						GPIO_IRQ_CFG(EXTI15_10_IRQn, ENABLE);
+					if(xSemaphoreTake(DCLK_CFG_SMPHR_h.CFG_NXT_Smphr, pdMS_TO_TICKS(0))){
+						curr_time_setting++;
 					}
 
-					if(GPIO_READ_INPUT_PIN(GPIOB, GPIO_PIN_NUMBER_14) == 1){
-						uint8_t cursos_x_pos[4] = {1, 1, 1, 1};
-						uint8_t cursor_y_pos[4] = {1, 1, 1, 1};
-
-						SH1106_Draw_Filled_Rectangle(&SH1106_DCLK_h,
-								cursos_x_pos[time_status - 1],
-								cursor_y_pos[time_status - 1],
-								18,
-								15,
-								SH1106_COLOR_BLACK);
-						// prints current cursor here if idle
-						oled_screen_update(); // FIXME
-						DELAY_ms(50);
-						// the cursor is covered by the time value after 50 ms
-					}
+					// places the cursor to current time setting
+					setTimeCursorPos(curr_time_setting);
 
 					TimeToString(&DS1307_DCLK_h.DS1307_TIME_HANDLE, time_buf, sizeof(time_buf));
 					SH1106_GotoXY(&SH1106_DCLK_h, TIME_x_pos, TIME_y_pos);
-					SH1106_Puts(&SH1106_DCLK_h, time_buf, &Font_7x10, SH1106_COLOR_BLACK);
-					oled_screen_update();  // FIXME
-					DELAY_ms(20);
+					SH1106_Puts(&SH1106_DCLK_h, time_buf, &Font_11x18, SH1106_COLOR_BLACK);
+					oled_screen_update();
+					vTaskDelay(pdMS_TO_TICKS(20));
 				}
-				flushPendingBit(GPIO_PIN_NUMBER_15);
-				flushPendingBit(GPIO_PIN_NUMBER_2);
-				GPIO_IRQ_CFG(EXTI15_10_IRQn, DISABLE);
-				GPIO_IRQ_CFG(EXTI2_IRQn, ENABLE);
-				xSemaphoreGive(xI2C_BUS_Smphr);
-				xTaskResumeAll();
-			}
 
+				// exits the while loop
+				// clears the bufffer ffor the oled, exiting for configure mode
+				SH1106_FILL_BUFFER(&SH1106_DCLK_h, SH1106_COLOR_BLACK);
+				xForceDateRST_flg = SET;
+
+				// set the finalized time data to the RTC here
+				I2C_PERI_CTRL(I2C1, ENABLE);
+				I2C1_irq_cfg(ENABLE);
+				DS1307_SET_TIME_IT(&DS1307_DCLK_h, DS1307_SLAVE_ADDR);
+
+				// perform the essential disabling and enabling of certain interrupts
+				exitTaskSetTimeDate();
+				vTaskResume(xTask6);
+
+
+			}
 		}
 		vTaskDelay(pdMS_TO_TICKS(100));
 	}
+}
+
+/**
+ * @brief
+ * @param
+ */
+void vTaskSetDate(void* pvParameters)
+{
+	while(1){
+		if(xSemaphoreTake(DCLK_CFG_SMPHR_h.CFG_DATE_Smphr, pdMS_TO_TICKS(0)) == pdTRUE){
+			if(xSemaphoreTake(xI2C_BUS_Smphr, pdMS_TO_TICKS(300)) == pdTRUE){
+
+				EnDiOtherTasks(DISABLE); // we dont need other tasks to run if we are setting the time
+				vTaskSuspend(xTask5);
+				flushPendingBit(GPIO_PIN_NUMBER_15, EXTI15_10_IRQn); // flush pending bit to avoid pre-interruption before use (debounce issue is also solved)
+				flushPendingBit(GPIO_PIN_NUMBER_3, EXTI3_IRQn);
+				DCLK_CFG_SMPHR_h.increment_flg = ENABLE;
+				GPIO_IRQ_CFG(EXTI15_10_IRQn, ENABLE);
+				GPIO_IRQ_CFG(EXTI3_IRQn, ENABLE);
+
+				// clear the buffer to prepare the oled for configuring mode
+				SH1106_FILL_BUFFER(&SH1106_DCLK_h, SH1106_COLOR_BLACK);
+
+				volatile  uint8_t curr_date_setting = 0;
+				uint8_t max_day;
+				char date_buf[20];
+
+				while(curr_date_setting <= 3){
+					switch(curr_date_setting){
+					case 0:
+						ds1307_increment(GPIOB,
+								GPIO_PIN_NUMBER_3,
+								&DS1307_DCLK_h.DS1307_DATE_HANDLE.DAY_OF_THE_WEEK,
+								6,
+								0);
+						break;
+					case 1:
+						ds1307_increment(GPIOB,
+							GPIO_PIN_NUMBER_3,
+							&DS1307_DCLK_h.DS1307_DATE_HANDLE.YEAR,
+							99,
+							0);
+						break;
+					case 2:
+						ds1307_increment(GPIOB,
+							GPIO_PIN_NUMBER_3,
+							&DS1307_DCLK_h.DS1307_DATE_HANDLE.MONTH,
+							12,
+							0);
+						break;
+					case 3:
+
+						max_day = retMaxDay(DS1307_DCLK_h);
+						ds1307_increment(GPIOB,
+							GPIO_PIN_NUMBER_3,
+							&DS1307_DCLK_h.DS1307_DATE_HANDLE.DAY,
+							max_day,
+							1);
+						break;
+					}
+
+					if(xSemaphoreTake(DCLK_CFG_SMPHR_h.CFG_NXT_Smphr, pdMS_TO_TICKS(0) == pdTRUE)){
+						curr_date_setting++;
+					}
+
+					setDateCursorPos(curr_date_setting);
+					DateToString(&DS1307_DCLK_h.DS1307_DATE_HANDLE, date_buf, sizeof(date_buf));
+					SH1106_GotoXY(&SH1106_DCLK_h, set_DATE_x_pos, set_DATE_y_pos);
+					SH1106_Puts(&SH1106_DCLK_h, date_buf, &Font_7x10, SH1106_COLOR_BLACK);
+					oled_screen_update();
+					vTaskDelay(pdMS_TO_TICKS(20));
+
+				}
+
+				// exits the while loop
+				// clears the bufffer ffor the oled, exiting for configure mode
+				SH1106_FILL_BUFFER(&SH1106_DCLK_h, SH1106_COLOR_BLACK);
+				xForceDateRST_flg = SET;
+
+				I2C_PERI_CTRL(I2C1, ENABLE);
+				I2C1_irq_cfg(ENABLE);
+				DS1307_SET_DATE_IT(&DS1307_DCLK_h, DS1307_SLAVE_ADDR);
+
+				exitTaskSetTimeDate();
+				vTaskResume(xTask5);
+
+			}
+		}
+		vTaskDelay(pdMS_TO_TICKS(100));
+	}
+
+
 }
 
 
@@ -733,24 +984,25 @@ void DCLK_BUTTON_PINS_INIT()
 	DCLK_BTTNS.GPIO_MODE = GPIO_PIN_MODE_INPUT;
 	DCLK_BTTNS.GPIO_PUPPD = GPIO_PULL_UP;
 	DCLK_BTTNS.pGPIOx = GPIOB;
-	DCLK_BTTNS.GPIO_PIN_NUMBER = GPIO_PIN_NUMBER_14;
-	GPIO_INIT(&DCLK_BTTNS);
-
-	// EXTI for
 	DCLK_BTTNS.EXTI_CFG.EXTI_EMR_SET = DISABLE;
 	DCLK_BTTNS.EXTI_CFG.EXTI_IMR_SET = ENABLE;
 	DCLK_BTTNS.EXTI_CFG.EXTI_FTSR_SEL = ENABLE;
 	DCLK_BTTNS.EXTI_CFG.EXTI_RTSR_SEL = DISABLE;
 
-	// edit date button
+	// EXTI to enter vTaskSetDate task
 	DCLK_BTTNS.GPIO_PIN_NUMBER = GPIO_PIN_NUMBER_1;
 	GPIO_INIT(&DCLK_BTTNS);
 
-	// edit time button
+	// EXTI to enter vTaskSetTime task
 	DCLK_BTTNS.GPIO_PIN_NUMBER = GPIO_PIN_NUMBER_2;
 	GPIO_INIT(&DCLK_BTTNS);
+	/*EXTI[0].IMR &= ~(1 << GPIO_PIN_NUMBER_2);*/
 
-	// move to next button
+	// EXTI for increment
+	DCLK_BTTNS.GPIO_PIN_NUMBER = GPIO_PIN_NUMBER_3;
+	GPIO_INIT(&DCLK_BTTNS);
+
+	// EXTI for confirm button
 	DCLK_BTTNS.GPIO_PIN_NUMBER = GPIO_PIN_NUMBER_15;
 	GPIO_INIT(&DCLK_BTTNS);
 
@@ -771,15 +1023,12 @@ uint8_t SH1106_I2C_WRITE(uint8_t Slave_Addr, uint8_t* TxBuffer, uint32_t len, ui
  * @brief
  * @param
  */
-uint8_t DS1307_I2C_WRITE(uint8_t Slave_Addr, uint8_t reg_addr, uint8_t value)
+uint8_t DS1307_I2C_WRITE(uint8_t Slave_Addr, uint8_t* TxBuffer, uint32_t len)
 {
-	uint8_t txbuffer[2];
-	txbuffer[0] = reg_addr;
-	txbuffer[1] = value;
 	TimeOut_t xTimeOut;
 	TickType_t ticks_to_wait = pdMS_TO_TICKS(100);
 	vTaskSetTimeOutState(&xTimeOut);
-	while(I2C_MSTR_SEND_DATA_IT(&I2C_DCLK_BUS_h, Slave_Addr, txbuffer, sizeof(txbuffer)/sizeof(txbuffer[0]), DISABLE) == I2C_BUSY){
+	while(I2C_MSTR_SEND_DATA_IT(&I2C_DCLK_BUS_h, Slave_Addr, TxBuffer, len, DISABLE) == I2C_BUSY){
 		if(xTaskCheckForTimeOut(&xTimeOut, &ticks_to_wait) == pdTRUE){
 			return 0;
 		}
@@ -930,17 +1179,45 @@ void EXTI2_IRQHandler(void)
  * @brief
  * @param
  */
+void EXTI3_IRQHandler()
+{
+	// Interrupt for increment
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	GPIO_IRQ_HANDLING(GPIO_PIN_NUMBER_3);
+	xSemaphoreGiveFromISR(DCLK_CFG_SMPHR_h.CFG_INC_Smphr, &xHigherPriorityTaskWoken);
+	GPIO_IRQ_CFG(EXTI3_IRQn, DISABLE);
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	DCLK_CFG_SMPHR_h.increment_flg = DISABLE;
+}
+
+/**
+ * @brief
+ * @param
+ */
 void EXTI15_10_IRQHandler(void)
 {
 	// interrupt for confirm button
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	GPIO_IRQ_HANDLING(GPIO_PIN_NUMBER_15);
 	GPIO_IRQ_CFG(EXTI15_10_IRQn, DISABLE);
+	xTimerChangePeriodFromISR(xTimerOneShot[NEXT_ONE_SHOT_TIMER], pdMS_TO_TICKS(100), &xHigherPriorityTaskWoken);
 	xSemaphoreGiveFromISR(DCLK_CFG_SMPHR_h.CFG_NXT_Smphr, &xHigherPriorityTaskWoken);
 	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
-
+void xTimerOneShotCllBck(TimerHandle_t xTimer)
+{
+	OneShotTimerID_t* txTimerID;
+	txTimerID = (OneShotTimerID_t*)(pvTimerGetTimerID(xTimer));
+	if(txTimerID == &xOneShotTimerID[NEXT_ONE_SHOT_TIMER]){
+		flushPendingBit(GPIO_PIN_NUMBER_15, EXTI15_10_IRQn);
+		GPIO_IRQ_CFG(EXTI15_10_IRQn, ENABLE);
+	}
+	else if(txTimerID == &xOneShotTimerID[INC_ONE_SHOT_TIMER]){
+		flushPendingBit(GPIO_PIN_NUMBER_3, EXTI3_IRQn);
+		GPIO_IRQ_CFG(EXTI3_IRQn, ENABLE);
+	}
+}
 
 /**
  * @brief
@@ -954,22 +1231,31 @@ void I2C_APPEV_CLLBCK(uint8_t value)
 			I2C1_irq_cfg(DISABLE);
 			I2C_PERI_CTRL(I2C1, DISABLE);
 			DS1307_DCLK_h.DS1307_IT_STATUS = DS1307_IT_FREE;
-			xSemaphoreGiveFromISR(xTIME_DATA_Smphr, &xHigherPriorityTaskWoken);
-			xSemaphoreGiveFromISR(xI2C_BUS_Smphr, &xHigherPriorityTaskWoken);
+			xSemaphoreGiveFromISR(xTIME_DATA_Smphr, &xHigherPriorityTaskWoken); // signals the tasks for new time data
+			xSemaphoreGiveFromISR(xI2C_BUS_Smphr, &xHigherPriorityTaskWoken); // free the semaphore for other I2C transactions
 		}
 		else if(DS1307_DCLK_h.DS1307_IT_STATUS == DS1307_IT_GET_DATE_BUSY){
 			I2C1_irq_cfg(DISABLE);
 			I2C_PERI_CTRL(I2C1, DISABLE);
 			DS1307_DCLK_h.DS1307_IT_STATUS = DS1307_IT_FREE;
-			xSemaphoreGiveFromISR(xDATE_DATA_Smphr, &xHigherPriorityTaskWoken);
-			xSemaphoreGiveFromISR(xI2C_BUS_Smphr, &xHigherPriorityTaskWoken);
+			xSemaphoreGiveFromISR(xDATE_DATA_Smphr, &xHigherPriorityTaskWoken); // signals the task for new date data
+			xSemaphoreGiveFromISR(xI2C_BUS_Smphr, &xHigherPriorityTaskWoken); // free the semaphore for other I2C transactions
 		}
-
-		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
+
+	if(value == I2C_APPEV_CLLBCK_TX_CMPLT){
+		if(DS1307_DCLK_h.DS1307_IT_STATUS == DS1307_IT_SET_TIME_BUSY || DS1307_DCLK_h.DS1307_IT_STATUS == DS1307_IT_SET_DATE_BUSY){
+			DS1307_DCLK_h.DS1307_IT_STATUS = DS1307_IT_FREE;
+			xSemaphoreGiveFromISR(xI2C_BUS_Smphr, &xHigherPriorityTaskWoken); // free the semaphore for other I2C transactions
+			I2C1_irq_cfg(DISABLE);
+			I2C_PERI_CTRL(I2C1, DISABLE);
+		}
+	}
+
 	if(value == I2C_APPEV_CLLBCK_AF_OCCUR || value == I2C_APPEV_CLLBCK_ARLO_OCCUR ||
 			value == I2C_APPEV_CLLBCK_BERR_OCCUR || value == I2C_APPEV_CLLBCK_OVR_OCCUR ||
 			value == I2C_APPEV_CLLBCK_PECERR_OCCUR || value == I2C_APPEV_CLLBCK_TIMEOUT_OCCUR){
 		xSemaphoreGiveFromISR(xI2C_BUS_Smphr, &xHigherPriorityTaskWoken);
 	}
+	portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }

@@ -42,6 +42,7 @@ extern "C" {
 #include "queue.h"
 #include "task.h"
 #include "semphr.h"
+#include "timers.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
