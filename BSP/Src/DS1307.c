@@ -64,14 +64,15 @@ static uint8_t BCDToDec(uint8_t val)
  */
 uint8_t DS137_INIT(DS1307_Handle_t* DS1307_HANDLE, uint8_t SlaveAddr)
 {
-	uint8_t temp_rx_buffer;
+	static uint8_t temp_tx_buffer[2];
 
-	if(DS1307_HANDLE->I2C_RECEIVE(SlaveAddr, DS1307_ADDR_SECS, &temp_rx_buffer, 1) == 0){
+	if(DS1307_HANDLE->I2C_RECEIVE(SlaveAddr, DS1307_ADDR_SECS, &temp_tx_buffer[1], 1) == 0){
 		return 0;
 	}
 
-	temp_rx_buffer |= SECS_ADDDR_CH_MSK;
-	if(DS1307_HANDLE->I2C_TRANSMIT(SlaveAddr, DS1307_ADDR_SECS, temp_rx_buffer) == 0){
+	temp_tx_buffer[0] = DS1307_ADDR_SECS;
+	temp_tx_buffer[1] |= SECS_ADDDR_CH_MSK;
+	if(DS1307_HANDLE->I2C_TRANSMIT(SlaveAddr, temp_tx_buffer, 2) == 0){
 		return 0;
 	}
 	// disables the oscillator
@@ -84,36 +85,86 @@ uint8_t DS137_INIT(DS1307_Handle_t* DS1307_HANDLE, uint8_t SlaveAddr)
  * @param DS1307_HANDLE : pointer to struct handler of DS1307
  * @param Slave_Addr : Slave address of the ds1307 module
  */
-uint8_t DS1307_SET_TIME(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr){
+uint8_t DS1307_SET_TIME(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr)
+{
+	static uint8_t tx_buffer[4];
 
-	// call init here so osc will be paused
+	tx_buffer[0] = DS1307_ADDR_SECS; // points to the first address for time
+
+	// set the value for seconds register
+	DS1307_HANDLE->raw_time[0] = DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.SECONDS) & ~(0x80); // 0x80 clears the bit 7 (Clock Halt) of 0x00 register, enables the OSC
+	tx_buffer[1] = DS1307_HANDLE->raw_time[0];
+
+	// set the value for minutes register
+	DS1307_HANDLE->raw_time[1] = DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.MINUTES);
+	tx_buffer[2] = DS1307_HANDLE->raw_time[1];
+
+	// set the value for hour register
+	DS1307_HANDLE->raw_time[2] = DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.HOURS);
+	switch(DS1307_HANDLE->DS1307_TIME_HANDLE.HOUR_FORMAT) {
+		case DS1307_24H_FORMAT:
+			DS1307_HANDLE->raw_time[2] &= ~(0x40); // clears the BIT6 of hour register to set as 24 format
+			break;
+
+		case DS1307_12H_FORMAT_AM:
+			DS1307_HANDLE->raw_time[2] |= (0x40);	// sets BIT6 and clears BIT5 for 12 HR format and AM
+			DS1307_HANDLE->raw_time[2] &= ~(0x20);
+			break;
+
+
+		case DS1307_12H_FORMAT_PM:
+			DS1307_HANDLE->raw_time[2] |= (0x40 | 0x20); // sets both BIT6 and BIT5 for 12 hr format and PM
+			break;
+		}
+
+	return DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, tx_buffer, sizeof(tx_buffer)/sizeof(tx_buffer[0]));
+}
+
+
+/**
+ * @brief Function used to set the current time for the module
+ * @param DS1307_HANDLE : pointer to struct handler of DS1307
+ * @param Slave_Addr : Slave address of the ds1307 module
+ */
+uint8_t DS1307_SET_TIME_IT(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr){
+	static uint8_t tx_buff[4];
+
+	tx_buff[0] = DS1307_ADDR_SECS;
+
+	// set the value for seconds register
+	DS1307_HANDLE->raw_time[0] = DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.SECONDS) & ~(0x80);
+	tx_buff[1] = DS1307_HANDLE->raw_time[0];
+
+	// set the value for minutes register
+	DS1307_HANDLE->raw_time[1] = DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.MINUTES);
+	tx_buff[2] = DS1307_HANDLE->raw_time[1];
 
 	// set the value for hours register
-	uint8_t temp_reg = DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.HOURS);
+	DS1307_HANDLE->raw_time[2] = DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.HOURS);
 	switch(DS1307_HANDLE->DS1307_TIME_HANDLE.HOUR_FORMAT) {
-	case DS1307_24H_FORMAT:
-		temp_reg &= ~(0x40); // clears the BIT6 of hour register to set as 24 format
+		case DS1307_24H_FORMAT:
+			DS1307_HANDLE->raw_time[2] &= ~(0x40); // clears the BIT6 of hour register to set as 24 format
+			break;
 
-	case DS1307_12H_FORMAT_AM:
-		temp_reg |= (0x40);	// sets BIT6 and clears BIT5 for 12 HR format and AM
-		temp_reg &= ~(0x20);
+		case DS1307_12H_FORMAT_AM:
+			DS1307_HANDLE->raw_time[2] |= (0x40);	// sets BIT6 and clears BIT5 for 12 HR format and AM
+			DS1307_HANDLE->raw_time[2] &= ~(0x20);
+			break;
 
-	case DS1307_12H_FORMAT_PM:
-		temp_reg |= (0x40 | 0x20); // sets both BIT6 and BIT5 for 12 hr format and PM
+		case DS1307_12H_FORMAT_PM:
+			DS1307_HANDLE->raw_time[2] |= (0x40 | 0x20); // sets both BIT6 and BIT5 for 12 hr format and PM
+			break;
 	}
+	tx_buff[3] = DS1307_HANDLE->raw_time[2];
 
-	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, DS1307_ADDR_HOURS, temp_reg) == DS1307_ERROR){
+	if((DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, tx_buff, sizeof(tx_buff)/sizeof(tx_buff[0])) == DS1307_SUCCESS)){
+		DS1307_HANDLE->DS1307_IT_STATUS = DS1307_IT_SET_TIME_BUSY;
+		return DS1307_SUCCESS;
+	}
+	else {
 		return DS1307_ERROR;
 	}
-	// set the value for minutes register
-	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, DS1307_ADDR_MINUTES, DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.MINUTES)) == DS1307_ERROR){
-		return DS1307_ERROR;
-	}
-	// set the value for seconds register
-	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, DS1307_ADDR_SECS, DecToBCD(DS1307_HANDLE->DS1307_TIME_HANDLE.SECONDS) & ~(0x80)) == DS1307_ERROR){
-		return DS1307_ERROR; // 0x80 clears the bit 7 (Clock Halt) of 0x00 register, enables the OSC
-	}
-	return DS1307_SUCCESS;
+
 }
 
 /**
@@ -123,32 +174,57 @@ uint8_t DS1307_SET_TIME(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr){
  */
 uint8_t DS1307_SET_DATE(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr)
 {
-	uint8_t temp_reg;
+	static uint8_t tx_buffer[5];
+	tx_buffer[0] = DS1307_ADDR_DAY;
+
 	// set day of the week
-	temp_reg = DS1307_HANDLE->DS1307_DATE_HANDLE.DAY_OF_THE_WEEK;
-	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, DS1307_ADDR_DAY, DecToBCD(temp_reg & 0x07)) == DS1307_ERROR){ // clear the mask for
-		return DS1307_ERROR;
-	}
+	DS1307_HANDLE->raw_date[0] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.DAY_OF_THE_WEEK & 0x07);
+	tx_buffer[1] = DS1307_HANDLE->raw_date[0];
 
 	// set the date
-	temp_reg = DS1307_HANDLE->DS1307_DATE_HANDLE.DAY;
-	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, DS1307_ADDR_DATE, DecToBCD(temp_reg & 0x3F)) == DS1307_ERROR){ // clear the mask for
+	DS1307_HANDLE->raw_date[1] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.DAY & 0x3F);
+	tx_buffer[2] = DS1307_HANDLE->raw_date[1];
+
+	DS1307_HANDLE->raw_date[2] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.MONTH & 0x1F);
+	tx_buffer[3] = DS1307_HANDLE->raw_date[2];
+
+	DS1307_HANDLE->raw_date[3] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.YEAR);
+	tx_buffer[4] = DS1307_HANDLE->raw_date[3];
+
+	return DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, tx_buffer, sizeof(tx_buffer)/sizeof(tx_buffer[0]));
+}
+
+/**
+ * @brief Interrupt function used to set the current date for the RTC module
+ * @param DS1307_HANDLE : pointer to struct handler of DS1307
+ * @param Slave_Addr : Slave address of the ds1307 module
+ */
+uint8_t DS1307_SET_DATE_IT(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr)
+{
+	static uint8_t tx_buffer[5];
+	tx_buffer[0] = DS1307_ADDR_DAY;
+
+	// set day of the week
+	DS1307_HANDLE->raw_date[0] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.DAY_OF_THE_WEEK & 0x07);
+	tx_buffer[1] = DS1307_HANDLE->raw_date[0];
+
+	// set the date
+	DS1307_HANDLE->raw_date[1] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.DAY & 0x3F);
+	tx_buffer[2] = DS1307_HANDLE->raw_date[1];
+
+	DS1307_HANDLE->raw_date[2] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.MONTH & 0x1F);
+	tx_buffer[3] = DS1307_HANDLE->raw_date[2];
+
+	DS1307_HANDLE->raw_date[3] = DecToBCD(DS1307_HANDLE->DS1307_DATE_HANDLE.YEAR);
+	tx_buffer[4] = DS1307_HANDLE->raw_date[3];
+
+	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, tx_buffer, sizeof(tx_buffer)/sizeof(tx_buffer[0])) == DS1307_SUCCESS){
+		DS1307_HANDLE->DS1307_IT_STATUS = DS1307_IT_SET_DATE_BUSY;
+		return DS1307_SUCCESS;
+	}
+	else {
 		return DS1307_ERROR;
 	}
-
-	// set the month
-	temp_reg = DS1307_HANDLE->DS1307_DATE_HANDLE.MONTH;
-	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, DS1307_ADDR_MONTH, DecToBCD(temp_reg & 0x1F)) == DS1307_ERROR){ // clear the mask for
-		return DS1307_ERROR;
-	}
-
-	// set the year
-	temp_reg = DS1307_HANDLE->DS1307_DATE_HANDLE.YEAR;
-	if(DS1307_HANDLE->I2C_TRANSMIT(Slave_Addr, DS1307_ADDR_YEAR, DecToBCD(temp_reg)) == DS1307_ERROR){ // clear the mask for
-		return DS1307_ERROR;
-	}
-
-	return DS1307_SUCCESS;
 }
 
 /**

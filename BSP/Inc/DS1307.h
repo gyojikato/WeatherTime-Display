@@ -69,7 +69,7 @@ typedef enum {
 typedef struct {
 
 	/*DS1307_I2C_COMMS_t DS1307_COMMS_HANDLE;*/
-	uint8_t	(*I2C_TRANSMIT)(uint8_t Slave_Addr, uint8_t reg_addr, uint8_t value);
+	uint8_t	(*I2C_TRANSMIT)(uint8_t Slave_Addr, uint8_t* TxBuffer, uint32_t len);
 	uint8_t (*I2C_RECEIVE)(uint8_t Slave_Addr, uint8_t reg_addr, uint8_t* RxBuffer, uint32_t len);
 	DS1307_DATE_t DS1307_DATE_HANDLE;
 	DS1307_TIME_t DS1307_TIME_HANDLE;
@@ -97,11 +97,25 @@ uint8_t DS137_INIT(DS1307_Handle_t* DS1307_HANDLE, uint8_t SlaveAddr);
 uint8_t DS1307_SET_TIME(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr);
 
 /**
+ * @brief Interrupt mode Function used to set the current time for the module
+ * @param DS1307_HANDLE : pointer to struct handler of DS1307
+ * @param Slave_Addr : Slave address of the ds1307 module
+ */
+uint8_t DS1307_SET_TIME_IT(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr);
+
+/**
  * @brief Function used to set the current date for the RTC module
  * @param DS1307_HANDLE : pointer to struct handler of DS1307
  * @param Slave_Addr : Slave address of the ds1307 module
  */
 uint8_t DS1307_SET_DATE(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr);
+
+/**
+ * @brief Interrupt function used to set the current date for the RTC module
+ * @param DS1307_HANDLE : pointer to struct handler of DS1307
+ * @param Slave_Addr : Slave address of the ds1307 module
+ */
+uint8_t DS1307_SET_DATE_IT(DS1307_Handle_t* DS1307_HANDLE, uint8_t Slave_Addr);
 
 /**
  * @brief Function in retrieving the current time from the module
