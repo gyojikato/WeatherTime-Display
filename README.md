@@ -3,21 +3,21 @@
 
 ** Under development **
 
-🕒 **Smart Environmental Clock**
+# 🕒 Smart Environmental Clock
 
-📘 **Overview**
+# 📘 **Overview**
 
-🧩 **Features**
+# 🧩 **Features**
 
-🛠️ **Hardware Used**
+# 🛠️ **Hardware Used**
 
-⚙️ **Software Stack**
+# ⚙️ **Software Stack**
 
-🧱 **Project Structure**
+# 🧱 **Project Structure**
     
-🧠 **Implementation Details**
+# 🧠 **Implementation Details**
 
-# 🔌 **Logic Analyzer Logs**
+# 🔌 Logic Analyzer Logs
 
 ## System Runtimme I/O Trace
 
@@ -36,9 +36,9 @@ lightweight background I²C activity.
 
 ## Timing Marker P0**
     
-💡 **Skills & Learnings**
+# 💡 **Skills & Learnings**
 
-🚀 **Future Improvements**
+# 🚀 **Future Improvements**
 
 
 
