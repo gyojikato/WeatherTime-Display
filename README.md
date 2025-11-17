@@ -3,25 +3,25 @@
 
 ** Under development **
 
-# 🕒 Smart Environmental Clock
+## 🕒 Smart Environmental Clock
 ---
 ---
-# 📘 **Overview**
+## 📘 **Overview**
 ---
 ---
-# 🧩 **Features**
+## 🧩 **Features**
 ---
 ---
-# 🛠️ **Hardware Used**
+## 🛠️ **Hardware Used**
 ---
 ---
-# ⚙️ **Software Stack**
+## ⚙️ **Software Stack**
 ---
 ---
-# 🧱 **Project Structure**
+## 🧱 **Project Structure**
 ---
 ---
-# 🧠 **Implementation Details**
+## 🧠 **Implementation Details**
 ---
 ---
 ## 🔌 Logic Analyzer Logs
@@ -36,17 +36,17 @@
 | **D1** | I²C SDA             |
 | **D2** | I²C SCL             |
 
-## Description
+### Description
 <p style="text-align: justify;">
 This logic-analyzer capture shows the system’s normal runtime behavior. Channel 1 displays the DHT22 sensor update pulse occurring roughly every 2 seconds. Channels 2 and 3 (I²C SDA/SCL) show large bursts of data corresponding to 
 OLED display updates, while the smaller recurring I²C transactions represent periodic time/second reads performed every ~100 ms. Overall, the trace illustrates the coordinated timing between sensor polling, display refresh cycles, and    
 lightweight background I²C activity.
 
-## Timing Marker P0**
+### Timing Marker P0**
 ---    
-# 💡 **Skills & Learnings**
+## 💡 **Skills & Learnings**
 ---
 ---
-# 🚀 **Future Improvements**
+## 🚀 **Future Improvements**
 ---
 ---
