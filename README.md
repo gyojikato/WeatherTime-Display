@@ -42,7 +42,13 @@ This logic-analyzer capture shows the system’s normal runtime behavior. Channe
 OLED display updates, while the smaller recurring I²C transactions represent periodic time/second reads performed every ~100 ms. Overall, the trace illustrates the coordinated timing between sensor polling, display refresh cycles, and    
 lightweight background I²C activity.
 
-### Timing Marker P0**
+### Timing Marker P0
+<img width="1801" height="317" alt="image" src="https://github.com/user-attachments/assets/48a8ab14-79c0-4945-bfc3-2164571b5ac2" />
+
+<p style="text-align: justify;">
+Timing Marker displays the 100ms interval for the sampling of the external RTC (DS1307 module). The scheduler from the FreeRTOS makes a great job at maintaining a fairly accurate sampling time with just an average discrepancy of around ~400us. This is crucial since the displayed time must be updated at every second. 
+<img width="1341" height="278" alt="image" src="https://github.com/user-attachments/assets/aaa4fa9f-a71b-4ea5-b6b3-d13e8d865841" />
+
 ---    
 ## 💡 **Skills & Learnings**
 ---
