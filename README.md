@@ -24,9 +24,9 @@
 # 🧠 **Implementation Details**
 ---
 ---
-# 🔌 Logic Analyzer Logs
+## 🔌 Logic Analyzer Logs
 ---
-## System Runtimme I/O Trace
+### System Runtimme I/O Trace
 
 <img width="1868" height="413" alt="image" src="https://github.com/user-attachments/assets/1ea28c56-94ee-4146-bd5a-9afeb01e3690" />
 
