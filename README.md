@@ -44,6 +44,8 @@ lightweight background I²C activity.
 ## Timing Marker P0**
 ---    
 # 💡 **Skills & Learnings**
-
+---
+---
 # 🚀 **Future Improvements**
-
+---
+---
