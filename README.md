@@ -16,6 +16,7 @@
 🧱 Project Structure
 
 🔌 Logic Analyzer Logs
+<img width="1868" height="413" alt="image" src="https://github.com/user-attachments/assets/1ea28c56-94ee-4146-bd5a-9afeb01e3690" />
 
 🧠 Implementation Details
 
