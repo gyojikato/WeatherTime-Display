@@ -14,9 +14,35 @@
 ---
 ## 🛠️ **Hardware Used**
 ---
+ StM32 NUCLEO-F446RE
+ DS1307 RTC Module
+ DHT22 Temperature and Humidity Sensor
+ SH1106 1.3" OLED Display
+ 
+
 ---
 ## ⚙️ **Software Stack**
 ---
+###Application Layer
+Handles high-level logic:
+ *Retrieves time, temperature, humidity
+ *Processes data
+ *Triggers OLED updates
+ *Manages system behavior
+
+###Middleware
+Lightweight utility modules sitting above drivers:
+ *OLED rendering utilities
+ *Sensor communication helpers
+ *Formatting and display functions
+
+###FreeRTOS Kernel
+Provides real-time scheduling and synchronization:
+ *Task Scheduler
+ *Queues and Event Groups
+ *Software Timers for periodic sensor/time updates
+ *Mutexes for safe I2C access
+
 ---
 ## 🧱 **Project Structure**
 ---
@@ -52,6 +78,13 @@ Timing Marker displays the 100ms interval for the sampling of the external RTC (
 ---    
 ## 💡 **Skills & Learnings**
 ---
+Baremmetal C Programming
+Understanding Data Sheets
+HW and SW Debugging
+Systems Design
+
+CMSIS, FreeRTOS, I2C, Timers, Interrupts
+
 ---
 ## 🚀 **Future Improvements**
 ---
