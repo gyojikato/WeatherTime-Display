@@ -23,25 +23,25 @@
 ---
 ## ⚙️ **Software Stack**
 ---
-###Application Layer
+### Application Layer
 Handles high-level logic:
- *Retrieves time, temperature, humidity
- *Processes data
- *Triggers OLED updates
- *Manages system behavior
+ * Retrieves time, temperature, humidity
+ * Processes data
+ * Triggers OLED updates
+ * Manages system behavior
 
-###Middleware
+### Middleware
 Lightweight utility modules sitting above drivers:
- *OLED rendering utilities
- *Sensor communication helpers
- *Formatting and display functions
+ * OLED rendering utilities
+ * Sensor communication helpers
+ * Formatting and display functions
 
-###FreeRTOS Kernel
+### FreeRTOS Kernel
 Provides real-time scheduling and synchronization:
- *Task Scheduler
- *Queues and Event Groups
- *Software Timers for periodic sensor/time updates
- *Mutexes for safe I2C access
+ * Task Scheduler
+ * Queues and Event Groups
+ * Software Timers for periodic sensor/time updates
+ * Mutexes for safe I2C access
 
 ---
 ## 🧱 **Project Structure**
