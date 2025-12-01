@@ -42,6 +42,19 @@ Provides real-time scheduling and synchronization:
  * Queues and Event Groups
  * Software Timers for periodic sensor/time updates
  * Mutexes for safe I2C access
+<p style="text-align: justify;">
+FreeRTOS manages timing for periodic reading of time, temperature, and humidity. Software timers trigger sensor acquisition tasks, while event groups or queues notify the OLED display task when new data is available. The display task uses mutex-protected I2C access through the CMSIS-based custom drivers to update the screen. This task structure ensures responsive, event-driven updates with deterministic timing.
+
+### Custom Low-Level Driver Layer (CMSIS-based)
+Custom LL drivers built directly on ARM CMSIS-Core and CMSIS-Device headers:
+ * GPIO Driver using CMSIS register definitions
+ * I2C Driver for sensor and OLED communication
+ * Timer Driver for FreeRTOS tick and timing tasks
+ * RCC/Clock Setup
+ * Interrupt Handlers using NVIC CMSIS interfaces
+<p style="text-align: justify;">
+The low-level drivers used in this project were developed directly on top of the ARM CMSIS-Core and CMSIS-Device layers. Instead of using the STM32 HAL/LL libraries, the drivers interact with peripherals through CMSIS register definitions, providing fine-grained control and reduced overhead. Drivers implemented include GPIO, I2C, timers, UART, RCC configuration, and NVIC interrupt handlers. These drivers form the foundation of the system and are used by FreeRTOS tasks and middleware modules.
+
 
 ---
 ## 🧱 **Project Structure**
@@ -78,13 +91,12 @@ Timing Marker displays the 100ms interval for the sampling of the external RTC (
 ---    
 ## 💡 **Skills & Learnings**
 ---
-Baremmetal C Programming
-Understanding Data Sheets
-HW and SW Debugging
-Systems Design
-
-CMSIS, FreeRTOS, I2C, Timers, Interrupts
-
+Skills acquired and applied include, but are not limited to:
+* Baremmetal C Programming
+* Understanding Data Sheets
+* HW and SW Debugging
+* Systems Design
+* Utilizing CMSIS, FreeRTOS, I2C, Timers, Interrupts
 ---
 ## 🚀 **Future Improvements**
 ---
