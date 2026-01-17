@@ -3,19 +3,29 @@
  *
  *  Created on: May 3, 2025
  *      Author: katog
+ *
+ *  Description: STM32F44xx I2C peripheral driver.
+ *  Implements master/slave send and receive functionality, including
+ *  interrupt-based and polling-based communication. Supports both
+ *  Standard Mode (SM, up to 100 kHz) and Fast Mode (FM, up to 400 kHz).
  */
 
 
 #include "stm32f44xx_i2c.h"
 
-#define I2C_MAX_TIMEOUT			(0xFFFFF000)
-#define I2C_WRITE				(0)
-#define I2C_READ				(1)
+#define I2C_MAX_TIMEOUT         (0xFFFFF000) // Maximum timeout for polling loops
+#define I2C_WRITE               (0)          // Write operation flag
+#define I2C_READ                (1)          // Read operation flag
 
 
+// ========================= Static helper functions ========================= //
 
-
-// static functions start here
+/**
+ * @brief Waits for a specific status flag in the I2C SR1 register to be set.
+ * @param pI2Cx: Pointer to the I2C peripheral.
+ * @param FLG: The flag in SR1 to wait for.
+ * @return I2C_ERROR_STATUS_t: Returns timeout error if the flag is not set in time, else success.
+ */
 static I2C_ERROR_STATUS_t I2C_WAIT_STATUS_SR1(I2C_TypeDef* pI2Cx, uint32_t FLG)
 {
 	uint32_t prev_tick = DELAY_TICK();
@@ -27,7 +37,10 @@ static I2C_ERROR_STATUS_t I2C_WAIT_STATUS_SR1(I2C_TypeDef* pI2Cx, uint32_t FLG)
 	return I2C_SUCCESS;
 }
 
-
+/**
+ * @brief Closes a receive transaction, clears buffers and resets status.
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
+ */
 static void close_rx(I2C_Handle_t* I2C_HANDLE)
 {
 	I2C_HANDLE->RxLen = 0;
@@ -38,21 +51,30 @@ static void close_rx(I2C_Handle_t* I2C_HANDLE)
 	I2C_HANDLE->pI2Cx->CR2 &= ~(I2C_CR2_ITEVTEN_Msk);
 	I2C_HANDLE->pI2Cx->CR2 &= ~(I2C_CR2_ITERREN_Msk);
 }
+
+/**
+ * @brief Closes a transmit transaction, clears buffers and resets status.
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
+ */
 static void close_tx(I2C_Handle_t* I2C_HANDLE)
 {
 	I2C_HANDLE->TxLen = 0;
 	I2C_HANDLE->TxSize = 0;
 	I2C_HANDLE->TxBuffer = NULL;
 	I2C_HANDLE->I2C_STATUS = I2C_STATUS_READY;
+
+	// Disable I2C interrupts
 	I2C_HANDLE->pI2Cx->CR2 &= ~(I2C_CR2_ITBUFEN_Msk);
 	I2C_HANDLE->pI2Cx->CR2 &= ~(I2C_CR2_ITEVTEN_Msk);
 	I2C_HANDLE->pI2Cx->CR2 &= ~(I2C_CR2_ITERREN_Msk);
 }
 
-// static functions end here
+// ========================= Peripheral Control Functions ========================= //
+
 /**
- * @brief
- * @param
+ * @brief Enables or disables the peripheral clock for a given I2C peripheral.
+ * @param pI2Cx: Pointer to the I2C peripheral.
+ * @param ENorDI: ENABLE or DISABLE macro.
  */
 void I2C_PCLK_CTRL(I2C_TypeDef* pI2Cx, uint8_t ENorDI)
 {
@@ -81,23 +103,24 @@ void I2C_PCLK_CTRL(I2C_TypeDef* pI2Cx, uint8_t ENorDI)
 }
 
 /**
- * @brief Function to initialize I2C peripheral with user configurations
- * @param
+ * @brief Initializes the I2C peripheral according to the handle configuration.
+ * Configures timing, frequency, and mode (SM/FM).
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
  */
 void I2C_INIT(I2C_Handle_t* I2C_HANDLE)
 {
-	I2C_PCLK_CTRL(I2C_HANDLE->pI2Cx, ENABLE);
+	I2C_PCLK_CTRL(I2C_HANDLE->pI2Cx, ENABLE); // Enable clock for I2C
 
 	uint32_t APB1_CLK = RCC_GET_APB1_CLK();
-	uint8_t CR2_FREQ_VALUE = (uint8_t)(APB1_CLK / 1000000);
+	uint8_t CR2_FREQ_VALUE = (uint8_t)(APB1_CLK / 1000000); // CR2 frequency in MHz
 
-	// configure the peripheral input clock;
+	// Configure CR2 register for peripheral clock frequency
 	I2C_HANDLE->pI2Cx->CR2 &= ~(I2C_CR2_FREQ_Msk);
 	I2C_HANDLE->pI2Cx->CR2 |= CR2_FREQ_VALUE;
 
 	uint16_t CCR_VALUE;
 
-	// I2C FREQ configurations
+	// Configure CCR and TRISE depending on speed mode
 	if(I2C_HANDLE->I2C_SPD <= I2C_SPEED_SM){
 		// I2C Master mode selection (SM)
 		I2C_HANDLE->pI2Cx->CCR &= ~(I2C_CCR_FS_Msk);
@@ -126,7 +149,7 @@ void I2C_INIT(I2C_Handle_t* I2C_HANDLE)
 		}
 	}
 	else {
-		return;
+		return; // Invalid speed
 	}
 	I2C_HANDLE->pI2Cx->CCR = CCR_VALUE & 0x3FF;
 
@@ -134,20 +157,16 @@ void I2C_INIT(I2C_Handle_t* I2C_HANDLE)
 }
 
 /**
- * @brief
- * @param
+ * @brief Generates a START condition on the I2C bus.
  */
-
 void I2C_GEN_START_CONDITION(I2C_TypeDef* pI2Cx)
 {
 	pI2Cx->CR1 |= (I2C_CR1_START_Msk);
 }
 
 /**
- * @brief
- * @param
+ * @brief Generates a STOP condition on the I2C bus.
  */
-
 void I2C_GEN_STOP_CONDITION(I2C_TypeDef* pI2Cx)
 {
 	pI2Cx->CR1 |= (I2C_CR1_STOP_Msk);
@@ -169,8 +188,7 @@ void I2C_ACK_CTRL(I2C_TypeDef* pI2Cx, uint8_t ENorDI)
 
 
 /**
- * @brief
- * @param
+ * @brief Enables or disables the I2C peripheral.
  */
 void I2C_PERI_CTRL(I2C_TypeDef* pI2Cx, uint8_t ENorDI)
 {
@@ -183,8 +201,7 @@ void I2C_PERI_CTRL(I2C_TypeDef* pI2Cx, uint8_t ENorDI)
 }
 
 /**
- * @brief
- * @param
+ * @brief Clears the ADDR flag in SR1/SR2 after address is sent/received.
  */
 void I2C_CLEAR_ADDR(I2C_TypeDef* pI2Cx)
 {
@@ -195,8 +212,7 @@ void I2C_CLEAR_ADDR(I2C_TypeDef* pI2Cx)
 }
 
 /**
- * @brief
- * @param
+ * @brief Clears the STOPF flag after a STOP condition is detected.
  */
 void I2C_CLEAR_STOPF(I2C_TypeDef* pI2Cx)
 {
@@ -207,8 +223,7 @@ void I2C_CLEAR_STOPF(I2C_TypeDef* pI2Cx)
 }
 
 /**
- * @brief
- * @param
+ * @brief Sends a 7-bit slave address with R/W bit.
  */
 void I2C_SEND_ADDR(I2C_TypeDef* pI2Cx, uint8_t Slave_Addr, uint8_t RW)
 {
@@ -221,9 +236,10 @@ void I2C_SEND_ADDR(I2C_TypeDef* pI2Cx, uint8_t Slave_Addr, uint8_t RW)
 }
 
 
+// ========================= Master/Slave Polling Functions ========================= //
+
 /**
- * @brief
- * @param
+ * @brief Master transmits data in polling mode.
  */
 I2C_ERROR_STATUS_t I2C_MSTR_SEND_DATA(I2C_TypeDef* pI2Cx, uint8_t Slave_Addr, uint8_t* TxBuffer, uint32_t len, uint8_t Rpt_Strt)
 {
@@ -273,8 +289,7 @@ I2C_ERROR_STATUS_t I2C_MSTR_SEND_DATA(I2C_TypeDef* pI2Cx, uint8_t Slave_Addr, ui
 
 
 /**
- * @brief
- * @param
+ * @brief Master receives data in polling mode.
  */
 I2C_ERROR_STATUS_t I2C_MSTR_RECEIVE_DATA(I2C_TypeDef* pI2Cx, uint8_t Slave_Addr, uint8_t* RxBuffer, uint32_t len, uint8_t Rpt_Strt)
 {
@@ -340,9 +355,10 @@ I2C_ERROR_STATUS_t I2C_MSTR_RECEIVE_DATA(I2C_TypeDef* pI2Cx, uint8_t Slave_Addr,
 	return I2C_SUCCESS;
 }
 
+// ========================= Slave Polling Functions ========================= //
+
 /**
- * @brief
- * @param
+ * @brief Slave sends data in polling mode.
  */
 I2C_ERROR_STATUS_t I2C_SLAVE_SEND_DATA(I2C_TypeDef* pI2Cx, uint8_t* TxBuffer,  uint32_t len)
 {
@@ -370,8 +386,7 @@ I2C_ERROR_STATUS_t I2C_SLAVE_SEND_DATA(I2C_TypeDef* pI2Cx, uint8_t* TxBuffer,  u
 }
 
 /**
- * @brief
- * @param
+ * @brief Slave receives data in polling mode.
  */
 I2C_ERROR_STATUS_t I2C_SLAVE_RECEIVE_DATA(I2C_TypeDef* pI2Cx, uint8_t* RxBuffer,  uint32_t len)
 {
@@ -396,10 +411,17 @@ I2C_ERROR_STATUS_t I2C_SLAVE_RECEIVE_DATA(I2C_TypeDef* pI2Cx, uint8_t* RxBuffer,
 
 	return I2C_SUCCESS;
 }
+// ========================= Interrupt-based Functions ========================= //
+// Functions for Master/Slave communication using interrupts (non-blocking)
 
 /**
- * @brief
- * @param
+ * @brief Initiates a non-blocking I2C Master transmit (interrupt-based).
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
+ * @param Slave_Addr: 7-bit address of the slave device.
+ * @param TxBuffer: Pointer to the data buffer to transmit.
+ * @param len: Number of bytes to transmit.
+ * @param Rpt_Strt: Repeated start enable/disable (for multi-message transactions).
+ * @return I2C_STATUS_t: Returns I2C_OK if transmission started, I2C_BUSY if peripheral busy.
  */
 I2C_STATUS_t I2C_MSTR_SEND_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t Slave_Addr, uint8_t* TxBuffer, uint32_t len, uint8_t Rpt_Strt)
 {
@@ -425,8 +447,13 @@ I2C_STATUS_t I2C_MSTR_SEND_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t Slave_Addr,
 }
 
 /**
- * @brief
- * @param
+ * @brief Initiates a non-blocking I2C Master receive (interrupt-based).
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
+ * @param Slave_Addr: 7-bit address of the slave device.
+ * @param RxBuffer: Pointer to buffer to store received data.
+ * @param len: Number of bytes to receive.
+ * @param Rpt_Strt: Repeated start enable/disable (for multi-message transactions).
+ * @return I2C_STATUS_t: Returns I2C_OK if reception started, I2C_BUSY if peripheral busy.
  */
 I2C_STATUS_t I2C_MSTR_RECEIVE_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t Slave_Addr, uint8_t* RxBuffer, uint32_t len, uint8_t Rpt_Strt)
 {
@@ -453,8 +480,11 @@ I2C_STATUS_t I2C_MSTR_RECEIVE_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t Slave_Ad
 
 
 /**
- * @brief
- * @param
+ * @brief Initiates a non-blocking I2C Slave transmit (interrupt-based).
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
+ * @param TxBuffer: Pointer to data buffer to transmit.
+ * @param len: Number of bytes to transmit.
+ * @return I2C_STATUS_t: Returns I2C_OK if transmission started, I2C_BUSY if peripheral busy.
  */
 I2C_STATUS_t I2C_SLAVE_SEND_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t* TxBuffer, uint32_t len)
 {
@@ -477,8 +507,11 @@ I2C_STATUS_t I2C_SLAVE_SEND_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t* TxBuffer,
 }
 
 /**
- * @brief
- * @param
+ * @brief Initiates a non-blocking I2C Slave receive (interrupt-based).
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
+ * @param RxBuffer: Pointer to buffer to store received data.
+ * @param len: Number of bytes to receive.
+ * @return I2C_STATUS_t: Returns I2C_OK if reception started, I2C_BUSY if peripheral busy.
  */
 I2C_STATUS_t I2C_SLAVE_RECEIVE_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t* RxBuffer, uint32_t len)
 {
@@ -501,8 +534,8 @@ I2C_STATUS_t I2C_SLAVE_RECEIVE_DATA_IT(I2C_Handle_t* I2C_HANDLE, uint8_t* RxBuff
 }
 
 /**
- * @brief
- * @param
+ * @brief Handles I2C event interrupts (TXE, RXNE, BTF, STOPF, etc.).
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
  */
 void I2C_ITEVT_HANDLE(I2C_Handle_t* I2C_HANDLE)
 {
@@ -511,8 +544,8 @@ void I2C_ITEVT_HANDLE(I2C_Handle_t* I2C_HANDLE)
 		return;
 	}
 
-	uint32_t tempreg;
-	tempreg = I2C_HANDLE->pI2Cx->SR1;
+	uint32_t tempreg = I2C_HANDLE->pI2Cx->SR1;
+	// START condition generated
 	if(tempreg & I2C_SR1_SB_Msk){
 		if(I2C_HANDLE->I2C_STATUS == I2C_STATUS_TX_BUSY){
 
@@ -525,6 +558,7 @@ void I2C_ITEVT_HANDLE(I2C_Handle_t* I2C_HANDLE)
 
 		}
 	}
+	// Address phase completed
 	if(tempreg & I2C_SR1_ADDR_Msk){
 		if(I2C_HANDLE->I2C_STATUS == I2C_STATUS_TX_BUSY){
 
@@ -540,6 +574,7 @@ void I2C_ITEVT_HANDLE(I2C_Handle_t* I2C_HANDLE)
 			I2C_CLEAR_ADDR(I2C_HANDLE->pI2Cx);
 		}
 	}
+	// Byte transfer finished
 	if(tempreg & I2C_SR1_BTF_Msk)
 	{
 		if(I2C_HANDLE->I2C_STATUS == I2C_STATUS_TX_BUSY){
@@ -549,12 +584,14 @@ void I2C_ITEVT_HANDLE(I2C_Handle_t* I2C_HANDLE)
 		}
 
 	}
+	// STOP condition detected
 	if(tempreg & I2C_SR1_STOPF_Msk){
 		if(!(I2C_HANDLE->pI2Cx->SR1 & I2C_SR2_MSL_Msk)){
 			I2C_CLEAR_STOPF(I2C_HANDLE->pI2Cx);
 			close_rx(I2C_HANDLE);
 		}
 	}
+	// Transmit buffer empty
 	if(tempreg & I2C_SR1_TXE_Msk && I2C_HANDLE->I2C_STATUS == I2C_STATUS_TX_BUSY){
 		if(I2C_HANDLE->TxLen > 0){
 			I2C_HANDLE->pI2Cx->DR = *(I2C_HANDLE->TxBuffer);
@@ -562,6 +599,7 @@ void I2C_ITEVT_HANDLE(I2C_Handle_t* I2C_HANDLE)
 			I2C_HANDLE->TxLen--;
 		}
 	}
+	// Receive buffer not empty
 	if(tempreg & I2C_SR1_RXNE_Msk && I2C_HANDLE->I2C_STATUS == I2C_STATUS_RX_BUSY){
 
 		if(I2C_HANDLE->RxLen == 2){
@@ -588,8 +626,8 @@ void I2C_ITEVT_HANDLE(I2C_Handle_t* I2C_HANDLE)
 }
 
 /**
- * @brief
- * @param
+ * @brief Handles I2C error interrupts (BERR, ARLO, AF, OVR, TIMEOUT, PECERR).
+ * @param I2C_HANDLE: Pointer to the I2C handle structure.
  */
 void I2C_ITERR_HANDLE(I2C_Handle_t* I2C_HANDLE)
 {
@@ -634,8 +672,9 @@ void I2C_ITERR_HANDLE(I2C_Handle_t* I2C_HANDLE)
 }
 
 /**
- * @brief
- * @param
+ * @brief Configures I2C interrupts in NVIC.
+ * @param IRQ_NUMBER: IRQ number of the I2C peripheral.
+ * @param ENorDI: ENABLE to enable, DISABLE to disable the IRQ.
  */
 void I2C_IRQ_CFG(uint8_t IRQ_NUMBER, uint8_t ENorDI)
 {
@@ -647,6 +686,12 @@ void I2C_IRQ_CFG(uint8_t IRQ_NUMBER, uint8_t ENorDI)
 	}
 }
 
+/**
+ * @brief Weak callback function for application events.
+ * @param APP_EV: Event type from I2C communication.
+ * User can override this function in application code to handle events like:
+ * TX_CMPLT, RX_CMPLT, errors (BERR, ARLO, AF, OVR, TIMEOUT, PECERR).
+ */
 __attribute__((weak)) void I2C_APPEV_CLLBCK(I2C_APPEV_CLLBCK_t APP_EV){
 
 }

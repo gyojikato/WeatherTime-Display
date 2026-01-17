@@ -50,11 +50,11 @@ uint8_t SH1106_Init(SH1106_Handle_t* SH1106_HANDLE, SH1106_Comms_t* SH1106_COMMS
 	0x40, //
 	0xAF, //--turn on SH1106 panel
     };
-    SH1106_HANDLE->SH1106_COMMS = *SH1106_COMMS_HANDLE;
+    SH1106_HANDLE->SH1106_COMMS = SH1106_COMMS_HANDLE;
 
     /* Fill screen with black */
     SH1106_FILL_BUFFER(SH1106_HANDLE, SH1106_COLOR_BLACK);
-    if(SH1106_HANDLE->SH1106_COMMS.SH1106_WRITE(SH1106_I2C_ADDR, SH1106_init_cmd_str, sizeof(SH1106_init_cmd_str)/sizeof(SH1106_init_cmd_str[0]), DI_RPT_START) == 0){
+    if(SH1106_HANDLE->SH1106_COMMS->SH1106_WRITE(SH1106_I2C_ADDR, SH1106_init_cmd_str, sizeof(SH1106_init_cmd_str)/sizeof(SH1106_init_cmd_str[0]), DI_RPT_START) == 0){
     	return 0;
     }
     /* update displayed screen */
@@ -85,8 +85,8 @@ void SH1106_FILL_BUFFER(SH1106_Handle_t* SH1106_HANDLE, SH1106_Color_t color)
 void SH1106_UPDATE_SCRN(SH1106_Handle_t* SH1106_HANDLE, uint8_t Slave_Addr)
 {
 	uint8_t command[3];
-	uint8_t SH1106_BUFFER_temp[((SH1106_BUFFER_SIZE / 8) + 1)]; // set the temporary buffer to size of main buffer + 1 for allocation of command
-																// divided by 8 since we have 8 page addresses which holds 128 bytes
+	uint8_t SH1106_BUFFER_temp[133]; // set the temporary buffer to size of main buffer + 1 for allocation of command
+
 	command[0] = COMMAND_STREAM; // I2C command to send multiple commands
 	command[1] = 0x00; // 4 lower bits
 	command[2] = 0x10; // 4 Higher bits
@@ -94,15 +94,15 @@ void SH1106_UPDATE_SCRN(SH1106_Handle_t* SH1106_HANDLE, uint8_t Slave_Addr)
 
 	for(uint8_t m = 0; m < 8; m++){
 		command[1] = 0xB0 + m; // sets the page address for the RAM (offset 0 - 7)
-		SH1106_HANDLE->SH1106_COMMS.SH1106_WRITE(Slave_Addr, command, sizeof(command)/sizeof(command[0]), EN_RPT_START);
+		SH1106_HANDLE->SH1106_COMMS->SH1106_WRITE(Slave_Addr, command, sizeof(command)/sizeof(command[0]), EN_RPT_START);
 
-		for(uint8_t i = 0; i < (SH1106_BUFFER_SIZE / 8); i++){ // send 1 command + 128 data bytes for each page address
+		for(uint8_t i = 0; i < 133; i++){ // send 1 command + 128 data bytes for each page address
 				SH1106_BUFFER_temp[0] = DATA_STREAM;
 				SH1106_BUFFER_temp[i + 1] = SH1106_HANDLE->SH1106_DISP_BUFFER[(SH1106_WIDTH * m) + i];
 		}
 
-		SH1106_HANDLE->SH1106_COMMS.SH1106_WRITE(Slave_Addr, SH1106_BUFFER_temp, sizeof(command)/sizeof(command[0]), DI_RPT_START); // sends the buffer value to be displayed on the OLED
-
+		// sends the buffer value to be displayed on the OLED
+		SH1106_HANDLE->SH1106_COMMS->SH1106_WRITE(Slave_Addr, SH1106_BUFFER_temp, 129, DI_RPT_START);
 	}
 }
 /*

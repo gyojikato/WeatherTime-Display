@@ -31,11 +31,10 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f446xx.h"
-#include <string.h>
 #include "stm32f44xx_gpio.h"
 #include "stm32f44xx_timer.h"
 #include "stm32f44xx_i2c.h"
-#include "DHT22.h"
+
 #include "SH1106.h"
 #include "DS1307.h"
 #include "FreeRTOS.h"
@@ -43,7 +42,7 @@ extern "C" {
 #include "task.h"
 #include "semphr.h"
 #include "timers.h"
-
+#include "dclk_tasks.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
