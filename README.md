@@ -59,7 +59,7 @@ The low-level drivers used in this project were developed directly on top of the
 ---
 ## 🧱 **Project Structure**
 ---
-
+```text
 STM32F4_baremetal_FreeRTOS/
 │
 ├── BSP/
