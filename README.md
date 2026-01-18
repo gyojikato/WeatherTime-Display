@@ -144,7 +144,7 @@ STM32F4_baremetal_FreeRTOS/
         ├── stream_buffer.c
         ├── tasks.c
         └── timers.c
-
+```
 ---
 ## 🧠 **Implementation Details**
 ---
