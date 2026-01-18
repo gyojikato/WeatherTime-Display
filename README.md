@@ -8,6 +8,11 @@
 ---
 ## 📘 **Overview**
 ---
+
+The Smart Environmental Clock is an embedded project that displays the current time, date, temperature, and humidity on an OLED screen. It uses a real-time clock module for accurate timekeeping and a DHT22 sensor for environmental readings. 
+
+In addition to showing live data, the system allows users to set or adjust the current date and time. The project demonstrates a complete, self-contained embedded system with multiple sensors, a visual display, and user-interactive features, making it both a practical and educational example of bare-metal microcontroller programming.
+
 ---
 ## ✨ Features
 ---
@@ -191,11 +196,11 @@ This logic-analyzer capture shows the system’s normal runtime behavior. Channe
 OLED display updates, while the smaller recurring I²C transactions represent periodic time/second reads performed every ~100 ms. Overall, the trace illustrates the coordinated timing between sensor polling, display refresh cycles, and    
 lightweight background I²C activity.
  
-### DS1307 Sampling - Timming Marker P0 (Channel 2 - D1)
+### DS1307 Sampling - Timing Marker P0 (Channel 2 - D1)
 <img width="1801" height="317" alt="image" src="https://github.com/user-attachments/assets/48a8ab14-79c0-4945-bfc3-2164571b5ac2" />
 
 <p style="text-align: justify;">
-Timing Marker displays the 100ms interval for the sampling of the external RTC (DS1307 module). The scheduler from the FreeRTOS makes a great job at maintaining a fairly accurate sampling time with just an average discrepancy of around ~400us. This is crucial since the displayed time must be updated at every second. 
+Timing Marker displays the 100ms interval for the sampling of the external RTC (DS1307 module). The scheduler from the FreeRTOS maintains a fairly accurate sampling time at maintaining a fairly accurate sampling time with just an average discrepancy of around ~400us. This is crucial since the displayed time must be updated at every second. 
 <img width="1341" height="278" alt="image" src="https://github.com/user-attachments/assets/aaa4fa9f-a71b-4ea5-b6b3-d13e8d865841" />
 
  ### DHT22 Sampling - Timing Marker P1 (Channel 1 - D0)
@@ -204,7 +209,7 @@ Timing Marker displays the 100ms interval for the sampling of the external RTC (
 ## 💡 **Skills & Learnings**
 ---
 Skills acquired and applied include, but are not limited to:
-* Baremmetal C Programming
+* Baremetal C Programing
 * Understanding Data Sheets
 * HW and SW Debugging
 * Systems Design
@@ -212,4 +217,12 @@ Skills acquired and applied include, but are not limited to:
 ---
 ## 🚀 **Future Improvements**
 ---
+
+- Implement **DMA-based I2C communication** to further reduce CPU usage and improve efficiency.  
+- Add **power-saving modes** to extend battery life for portable applications.  
+- Expand the **user interface** to include alarms, timers, or menu navigation.  
+- Integrate additional **environmental sensors** (e.g., air quality, light, or pressure).  
+- Add **data logging** capabilities to store historical sensor readings.  
+- Enhance **error handling and diagnostics**, such as logging I2C errors or sensor failures.  
+
 ---
