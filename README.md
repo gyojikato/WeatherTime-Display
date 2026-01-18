@@ -9,17 +9,28 @@
 ## 📘 **Overview**
 ---
 ---
-## 🧩 **Features**
+## ✨ Features
 ---
+
+- **Real-Time Clock**: Reads and maintains accurate time and date using the DS1307 RTC module.  
+- **Temperature & Humidity Monitoring**: Periodic readings from the DHT22 sensor.  
+- **OLED Display**: Visualizes time, date, and sensor data on an SH1106 display.  
+- **FreeRTOS-Based Scheduling**: Uses multiple tasks for sensor acquisition, display updates, and peripheral management.  
+- **Interrupt-Driven I2C Communication**: Ensures efficient, non-blocking communication with peripherals.  
+- **BSP Abstraction Layer**: Board-specific drivers provide a reusable interface for sensors and displays.  
+- **Thread-Safe Resource Management**: Queues and semaphores coordinate access to shared peripherals like the I2C bus.  
+- **Error Handling**: Detects sensor or communication failures and maintains system stability without full resets.  
+- **Modular Design**: Clean separation between HAL, BSP, and application logic for portability and maintainability.
+
 ---
 ## 🛠️ **Hardware Used**
 ---
+
  StM32 NUCLEO-F446RE
  DS1307 RTC Module
  DHT22 Temperature and Humidity Sensor
  SH1106 1.3" OLED Display
  
-
 ---
 ## ⚙️ **Software Stack**
 ---
@@ -146,8 +157,21 @@ STM32F4_baremetal_FreeRTOS/
         └── timers.c
 ```
 ---
-## 🧠 **Implementation Details**
+## 🧠 Implementation Details
 ---
+
+The firmware is implemented using a layered architecture that separates low-level hardware access, board-specific drivers, and application logic. Core MCU functionality is handled through CMSIS, while external devices are isolated within a BSP layer to keep hardware assumptions localized.
+
+The BSP layer abstracts local driver implementations through wrapper functions, enabling portability across different MCU platforms.
+
+The system runs on FreeRTOS, where functionality is decomposed into small, focused tasks. Sensor acquisition and timekeeping are performed periodically, while display updates are event-driven to avoid unnecessary CPU usage. Task execution is coordinated using lightweight RTOS primitives to ensure deterministic behavior.
+
+All I2C-based peripherals share a single bus managed through an interrupt-driven state machine. Access to the bus is serialized using synchronization primitives to prevent concurrent transactions. I2C interrupts are enabled only during active transfers, reducing unintended ISR activity and simplifying error recovery.
+
+Data transfer and synchronization between tasks are handled using FreeRTOS primitives. Queues are used to safely pass sensor and time data between producer and consumer tasks, while semaphores and mutexes ensure exclusive access to shared resources such as the I2C bus.
+
+Board-specific drivers expose minimal, well-defined interfaces and do not depend on FreeRTOS APIs, allowing them to remain reusable. Error conditions such as communication timeouts and invalid sensor readings are detected at the driver level and propagated upward, enabling the system to continue operating without requiring a full reset.
+
 ---
 ## 🔌 Logic Analyzer Logs
 ---
@@ -166,13 +190,15 @@ STM32F4_baremetal_FreeRTOS/
 This logic-analyzer capture shows the system’s normal runtime behavior. Channel 1 displays the DHT22 sensor update pulse occurring roughly every 2 seconds. Channels 2 and 3 (I²C SDA/SCL) show large bursts of data corresponding to 
 OLED display updates, while the smaller recurring I²C transactions represent periodic time/second reads performed every ~100 ms. Overall, the trace illustrates the coordinated timing between sensor polling, display refresh cycles, and    
 lightweight background I²C activity.
-
-### Timing Marker P0
+ 
+### DS1307 Sampling - Timming Marker P0 (Channel 2 - D1)
 <img width="1801" height="317" alt="image" src="https://github.com/user-attachments/assets/48a8ab14-79c0-4945-bfc3-2164571b5ac2" />
 
 <p style="text-align: justify;">
 Timing Marker displays the 100ms interval for the sampling of the external RTC (DS1307 module). The scheduler from the FreeRTOS makes a great job at maintaining a fairly accurate sampling time with just an average discrepancy of around ~400us. This is crucial since the displayed time must be updated at every second. 
 <img width="1341" height="278" alt="image" src="https://github.com/user-attachments/assets/aaa4fa9f-a71b-4ea5-b6b3-d13e8d865841" />
+
+ ### DHT22 Sampling - Timing Marker P1 (Channel 1 - D0)
 
 ---    
 ## 💡 **Skills & Learnings**
