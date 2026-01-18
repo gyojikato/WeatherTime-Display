@@ -59,6 +59,92 @@ The low-level drivers used in this project were developed directly on top of the
 ---
 ## 🧱 **Project Structure**
 ---
+
+STM32F4_baremetal_FreeRTOS/
+│
+├── BSP/
+│   ├── Inc/
+│   │   ├── DHT22.h
+│   │   ├── DS1307.h
+│   │   ├── fonts.h
+│   │   └── SH1106.h
+│   └── Src/
+│       ├── DHT22.c
+│       ├── DS1307.c
+│       ├── fonts.c
+│       └── SH1106.c
+├── CMSIS/
+│   ├── Device/
+│   │   ├── stm32f4xx.h
+│   │   ├── stm32f446xx.h
+│   │   └── system_stm32f4xx.h
+│   └── Include/
+│       ├── core_cm4.h
+│       ├── cmsis_gcc.h
+│       ├── cmsis_compiler.h
+│       └── ...
+├── Core/
+│   ├── Inc/
+│   │   ├── dclk_init.h
+│   │   ├── dclk_tasks.h
+│   │   ├── dht22_wrappers.h
+│   │   ├── ds1307_wrappers.h
+│   │   ├── FreeRTOSConfig.h
+│   │   ├── main.h
+│   │   ├── sh1106_wrapper.h
+│   │   └── stm32f4xx_it.h
+│   ├── Src/
+│   │   ├── dclk_init.c
+│   │   ├── dclk_tasks.c
+│   │   ├── dht22_wrappers.c
+│   │   ├── ds1307_wrappers.c
+│   │   ├── main.c
+│   │   ├── sh1106_wrapper.c
+│   │   ├── stm32f4xx_it.c
+│   │   ├── syscalls.c
+│   │   ├── sysmem.c
+│   │   └── system_stm32f4xx.c
+│   └── Startup/
+│       └── startup_stm32f446retx.s
+├── Drivers/
+│   ├── Inc/
+│   │   ├── stm32f44xx_gpio.h
+│   │   ├── stm32f44xx_i2c.h
+│   │   ├── stm32f44xx_rcc.h
+│   │   ├── stm32f44xx_spi.h
+│   │   ├── stm32f44xx_timer.h
+│   │   └── stm32f44xx_usart.h
+│   └── Src/
+│       ├── stm32f44xx_gpio.c
+│       ├── stm32f44xx_i2c.c
+│       ├── stm32f44xx_rcc.c
+│       ├── stm32f44xx_spi.c
+│       ├── stm32f44xx_timer.c
+│       └── stm32f44xx_usart.c
+└── FreeRTOS/
+    └── FreeRTOS-Kernel/
+        ├── include/
+        │       ├── FreeRTOS.h
+        │       ├── task.h
+        │       ├── queue.h
+        │       ├── semphr.h
+        │       ├── timers.h
+        │       └── ...
+        ├── portable/
+        │   ├── GCC/
+        │   │   └── ARM_CM4F/
+        │   │       ├── port.c
+        │   │       └── portmacro.h
+        │   └── MemMang/
+        │       └── heap_4.c
+        ├── croutine.c
+        ├── event_groups.c
+        ├── list.c
+        ├── queue.c
+        ├── stream_buffer.c
+        ├── tasks.c
+        └── timers.c
+
 ---
 ## 🧠 **Implementation Details**
 ---
